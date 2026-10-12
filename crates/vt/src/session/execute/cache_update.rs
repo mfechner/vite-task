@@ -62,7 +62,7 @@ pub(super) async fn update_cache(
     cancel_token: &CancellationToken,
 ) -> (CacheUpdateStatus, Option<ExecutionError>) {
     let CacheState { metadata, globbed_inputs, std_outputs, tracking } = state;
-    let fspy = tracking.auto_inference;
+    let fspy = tracking.fspy.as_ref();
 
     if let Some(reports) = reports
         && reports.cache_disabled
@@ -104,8 +104,7 @@ pub(super) async fn update_cache(
         #[cfg(fspy)]
         path_accesses,
         metadata,
-        #[cfg(fspy)]
-        tracking.fspy.as_ref(),
+        fspy,
         &ignored_input_rels,
         &ignored_output_rels,
         workspace_root,
@@ -125,7 +124,7 @@ pub(super) async fn update_cache(
         );
     }
 
-    if fspy_outcome.is_none() && fspy {
+    if fspy_outcome.is_none() && fspy.is_some() {
         // Task requested fspy auto-inference but this binary was built without
         // `cfg(fspy)`. Task ran, but we can't compute a valid cache entry
         // without tracked path accesses.
@@ -208,15 +207,12 @@ pub(super) async fn update_cache(
 /// tool-reported `ignoreOutput` paths before read-write overlap detection.
 #[cfg_attr(
     not(fspy),
-    expect(
-        clippy::missing_const_for_fn,
-        reason = "const-eligibility only holds for the no-op `cfg(not(fspy))` body"
-    )
+    expect(clippy::missing_const_for_fn, reason = "the body is a no-op without fspy")
 )]
 fn observe_fspy(
     #[cfg(fspy)] path_accesses: Option<&fspy::PathAccessIterable>,
     metadata: &CacheMetadata,
-    #[cfg(fspy)] fspy: Option<&super::FspyTracking<'_>>,
+    fspy: Option<&super::FspyTracking<'_>>,
     ignored_input_rels: &FxHashSet<RelativePathBuf>,
     ignored_output_rels: &FxHashSet<RelativePathBuf>,
     workspace_root: &AbsolutePath,
@@ -274,7 +270,7 @@ fn observe_fspy(
     }
     #[cfg(not(fspy))]
     {
-        let _ = (metadata, ignored_input_rels, ignored_output_rels, workspace_root);
+        let _ = (metadata, fspy, ignored_input_rels, ignored_output_rels, workspace_root);
         None
     }
 }
